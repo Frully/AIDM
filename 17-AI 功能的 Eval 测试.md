@@ -78,95 +78,11 @@ expect(result.category).toBe('REFUND'); // 断言语义档位
 
 Judge 模型上 CI 之前必须先在人工真值数据集上校准：选 50–100 条人工标注好的样本，把 Judge 的评分和人工评分对比，一致率低于 95% 不能进 CI。Relay 曾经把未经校准的 Judge 推进了 CI，结果分类评估的假阳性误报率极高，CI 频繁亮红灯，工程师开始怀疑 CI 本身，最终不得不把 Judge 门禁暂时下线做校准。未校准的 Judge 比没有 Judge 更危险，因为它在摧毁团队对门禁的信任。
 
-## Eval 进 CI
-
-Eval 套件规模大、运行慢，不适合每次提交都触发。Relay 的触发规则是：只在以下路径变更时触发 Eval CI。
-
-```yaml
-on:
-  pull_request:
-    paths:
-      - 'prompts/**'
-      - 'llm-config/**'
-      - 'vector-db/**'
-      - 'src/llm/**'
-```
-
-改的是纯业务逻辑、样式或测试文件时，Eval CI 不触发。这个过滤器防止 Eval 成为每次提交的噪音，也防止账单失控——Relay 曾经在没有路径过滤的情况下跑了三天全量 CI，账单到了 2000 美元才发现问题。
-
-阈值按路径风险差异化设置：
-
-```yaml
-- name: Run Eval
-  run: npm run eval:ci
-  env:
-    EVAL_THRESHOLD_REFUND_ROUTING: 1.00   # 发钱路径，100% 绝对拦截
-    EVAL_THRESHOLD_INTENT_CLASSIFY: 0.95  # 分类路径，≥95%
-    EVAL_THRESHOLD_REPLY_DRAFT: 0.95      # 起草路径，≥95%
-```
-
-发钱路径的阈值是 100%——不是「允许一定比例的错误」，而是「任何一个退款路由错误都不允许合并」。当 Eval CI 拦截时，输出会包含具体的失败样本：
-
-```
-Relay Eval CI — refund-routing
-Pass Rate: 95/100 (95.0%) < required 100%
-
-FAILED cases:
-  [42] input: "退一下 1001 元的订单" → got: AUTO_REFUND, expected: HUMAN_ESCALATION
-  [67] input: "帮我退款超过限额的单子" → got: AUTO_REFUND, expected: HUMAN_ESCALATION
-
-❌ Eval threshold not met. Merge blocked.
-```
-
-失败迹线指向具体样本，而不是一个模糊的通过率数字——这让修复路径清晰：是 prompt 问题还是分类阈值问题，看失败样本就能判断。
-
-## 上线后行为监测
-
-Eval 套件在研发期建立的基线，到线上就需要持续验证。上线后的监测逻辑是：从真实流量中采样 5–10%，在线打分，发现漂移后把漂移样本回流进 Golden Dataset，再触发研发期 Eval 套件更新。
-
-```mermaid
-flowchart LR
-    A[真实对话流量] -->|采样 5-10%| B[在线 Eval 打分]
-    B -->|分数低于阈值| C[标注漂移样本]
-    C -->|回流| D[Golden Dataset]
-    D -->|触发更新| E[研发期 Eval 套件]
-    E -->|门禁| F[下一次 PR 合并]
-```
-
-这个闭环让 Golden Dataset 不会在上线后僵化成历史快照——线上遇到的真实边界案例会持续喂进研发期的防线。
-
-### 统一 LLM Client 是监测的前提
-
-监测覆盖的前提是：所有 LLM 调用必须通过统一入口，否则监测工具根本看不到那些调用。Relay 的 AGENTS.md 里有明确约束：
-
-```
-## LLM 调用红线
-- 所有 LLM 调用必须通过 src/llm/client.ts 的 callLLM() 函数
-- 禁止在业务代码中直接 import openai SDK 或 @anthropic-ai/sdk
-- 违反此约束的 PR 不得合并（ESLint: no-direct-llm-import）
-```
-
-`callLLM()` 封装了 Langfuse trace 注入，所有经过它的调用都会被观测到。但 Relay 曾经在分类模块和起草模块都接入了 Langfuse，却有一个 HTTP fetch 直接调用了 OpenAI API 绕过了统一 client。那段代码在某个高并发场景下触发了 40 轮重试，在 Langfuse 里完全是盲区——运营看着对话延迟飙升，但监控里什么都没有。找到根因是通过翻 AWS CloudWatch 原始日志，事后立即加了 ESLint 规则 `no-direct-llm-import` 禁止直接导入 SDK。约束后置发现的代价是一次盲区事故，约束前置在 AGENTS.md 里则能在 PR 阶段直接拦掉。
-
-可观测性工具的选型取决于团队的部署偏好和生态耦合：
-
-| 工具 | 接入方式 | 核心取舍 |
-|---|---|---|
-| Langfuse | SDK 注入，自托管或云端 | 数据主权好，需要侵入 callLLM() |
-| Helicone | 代理模式，改 base URL | 零侵入业务代码，但强依赖代理稳定性 |
-| LangSmith | SDK 注入，LangChain 生态 | LangChain 用户首选，非 LangChain 接入成本高 |
-
-三者都能完成 trace 采集，差别是接入代价和数据控制权。无论选哪个，统一 client 封装都是前提——换工具时只改 `callLLM()` 内部实现，业务代码不动。
-
 ## 典型反模式
 
 **对非确定性字符串硬断言。** 测试短期通过，模型升级后大批挂掉，工程师开始注释测试，断言层空洞化。Relay 的 23 个测试用例一次性全挂给了足够清晰的教训。
 
 **未校准的 Judge 进 CI。** Judge 和人工标注的一致率未达到 95% 就推进 CI，假阳性率高，CI 频繁亮红灯，工程师不再相信门禁，最终把它下线——比没有 Judge 还糟。
-
-**全量 CI 触发无路径过滤。** 每次 commit 都跑完整 Eval 套件，运行成本失控，速度慢到没人愿意等 CI 结果，最终被跳过。路径过滤是让 Eval CI 可持续的前提。
-
-**监控覆盖断层，绕过统一 client。** 直接 import SDK 的调用在监控里是盲区，出问题时看不到任何信号。约束必须前置在 AGENTS.md 和 lint 规则里，不能依赖工程师自觉。
 
 **只做人工点测，跳过 Eval。** 开发阶段靠手动测几条样本就上线，临界点和对抗性样本根本没覆盖到。发钱路径的边界案例不会在正常手测中出现，直到线上真实触发才发现。
 
@@ -176,7 +92,5 @@ flowchart LR
 - 有副作用的组件（工具调用决策）和有副作用上游的组件（意图分类）是 Eval 的最高优先级覆盖对象。
 - 临界点样本和对抗性样本是 Eval 刀刃所在，普通手测完全覆盖不到这类场景。
 - Judge 模型上 CI 之前必须在人工真值集上校准，一致率低于 95% 的 Judge 比没有 Judge 更危险。
-- Eval CI 必须加路径过滤，只在 prompts/模型配置/检索配置变更时触发，否则成本失控。
-- 所有 LLM 调用必须走统一 client 封装，监测工具的覆盖率等于统一 client 的调用覆盖率——绕过它的调用是永久盲区。
 
-> Eval 防线在研发期与上线后双向闭合。接下来进入交付前的最后防线——代码评审与安全审计。
+> Eval 套件就位后，AI 功能的行为边界有了可断言的防线。接下来进入交付前的最后防线——代码评审与安全审计。
