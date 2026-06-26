@@ -83,6 +83,134 @@ $ ln -s AGENTS.md CLAUDE.md
   这一报错作为**反馈**返回给 Agent，使其在本地立即进行了逻辑重构，移除了越权依赖。
 * 敏感日志防护则由敏感词与静态正则扫描插件在构建流水线中执行强力阻断。如果 Agent 试图在调试时插入一行 `console.log("refund data:", paymentDetail)`，流水线将直接报错挂起，杜绝风险代码上线。
 
+## AGENTS.md 骨架模板
+
+这个骨架可以直接复用：人填写、或者把项目描述扔给 AI 让它草拟、review 后提交进代码库。关键是写完之后每节都能回答同一个问题：「如果 Agent 冷启动只读这一节，它能拿到什么决策依据？」
+
+```markdown
+# AGENTS.md — [项目名称] Agent 宪法
+
+## 项目是什么
+[1-3 句话说明项目性质、主要交付物、目标用户]
+[Agent 每次冷启动都会读这里，要能从这三句话理解当前要做的是什么]
+
+## 语言与风格约束
+[哪些语言、哪些格式是硬约束，不是建议]
+- 所有代码注释和文档用简体中文
+- API 错误消息用英文（与第三方集成保持一致）
+
+## 主线示例
+[约定贯穿全项目的示例领域，防止 Agent 随意发明新概念]
+所有示例统一使用 [示例名] —— [一句话描述]
+
+## 硬约束（Red Lines）
+[写绕不过的工程红线，而非"尽量做到"的建议。能落进 lint 规则和 CI 的，同时标注检查工具名称]
+- 金额统一使用整数分（cents），禁止使用浮点数；CI 的 `amount-linter` 会直接拦截
+- 禁止在代码里使用 `console.log`；所有日志通过 `@relay/logger` 封装；ESLint `no-console: error` 强制执行
+- 数据库迁移文件禁止包含 `DROP COLUMN`；`migration-linter` 在 CI 中检查
+
+## 架构约束
+[层依赖方向，AI 生成代码时必须遵守]
+- 依赖方向：应用层 → 域层 → 基础设施层，禁止反向依赖
+- 所有 LLM 调用只能在 `src/infra/llm/` 目录下，域层不能直接 import 模型 SDK
+- Prompt 模板放在 `src/prompts/`，不能散落在业务逻辑里
+
+## 保留惯例
+[历史决策的记录，防止 Agent 推翻已经拍板的方案]
+- 2024-03：退款流程选择异步队列而非同步，原因是支付网关 P99 超过 3 秒。同步方案已评估并否决。
+
+## 工作约定
+- 每次开始新任务前读 TODOS.md，按其中标记的优先级领取
+- 提交信息格式：`[type]: 描述`（type: feat/fix/refactor/docs/test）
+- 不要删除或修改 AGENTS.md 本身
+```
+
+有几点值得说明。
+
+「硬约束」和「架构约束」两节是宪法密度最高的地方，也是最容易写废的地方。常见的废法是只写规则，不写执行工具：「所有金额用整数分」写完就结束。这样的规则 Agent 读了可能遵守，也可能在复杂上下文里遗忘。有效的写法是在每条规则后面注明对应的检查工具名——`amount-linter`、`no-console`、`depcruise`——让 Agent 知道「这不只是建议，CI 里有工具会拦截」，它对这条规则的遵守度就会明显提高。
+
+「保留惯例」节容易被跳过，实际上很有必要。AI Agent 在生成代码时有一种自然倾向：看到异步队列就会问「为什么不做成同步的？」或者直接换成同步实现。把「已否决的方案及理由」写在宪法里，等于把历史决策固化为约束，防止 Agent 在每次新会话里重新开始争论已经拍板的设计。
+
+宪法应当保持在 200 行以内。信息密度过低会导致模型在长上下文中漏掉关键红线，超长的宪法和没有宪法的效果差不多。
+
+## SessionStart Hook：让约束在对话开始前就到位
+
+即便 `AGENTS.md` 写得再严密，如果 Agent 不读，一切归零。CI 门禁能在代码提交时兜底，但它拦不住 Agent 在整个会话过程中产生的错误思路。
+
+Claude Code 的 `.claude/settings.json` 支持在会话启动时自动执行 shell 命令，把需要 Agent 知道的信息直接打印到上下文里：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== Agent 会话启动 ===' && cat AGENTS.md && echo '=== 当前 TODOS ===' && head -50 TODOS.md"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+这个文件提交进代码库，团队里每个人开新会话时都会自动执行。效果直接：Agent 在对话开始时就看到了项目约束和当前待办，而不是等用户手动粘贴，或等到 CI 报错才意识到有规则。
+
+对于内容稍复杂的项目，把启动逻辑拆进独立的 shell 脚本更清晰：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`.claude/session-start.sh` 的内容可以让 AI 根据「会话开始时我希望 Agent 知道什么」来生成，不需要手写：
+
+```bash
+#!/bin/bash
+echo "=== RELAY 项目 AGENT 会话启动 ==="
+cat AGENTS.md
+echo ""
+echo "=== 当前开放的 Worktree ==="
+git worktree list
+echo ""
+echo "=== 待处理的 TODOS ==="
+grep -E "^- \[ \]" TODOS.md | head -20
+```
+
+生成后 review 一遍、提交进代码库，之后每次会话都会自动执行。需要调整输出内容时，直接改脚本就行。
+
+### Relay 的实际教训
+
+Relay 在引入 SessionStart Hook 之前，`AGENTS.md` 里的金额约束被触发过两次。第一次，Agent 在开发对话路由新功能时，计算了一个预估退款金额并存成了 `amount: 12.5`，浮点数。`amount-linter` 在 CI 里拦住了：
+
+```
+amount-linter: src/services/routing/escalation.ts:47
+  Error: Float amount detected — use integer cents (1250) instead of 12.5
+  Rule: no-float-amount
+```
+
+Agent 收到报错后修正了那一行，但没有意识到同一个函数里另外两处也用了浮点数——因为 CI 只报了第一个错，Agent 修完就提交了，第二次 CI 再次拦截。来回两次，合计浪费了将近半个小时。
+
+加了 SessionStart Hook 之后，`AGENTS.md` 里「金额用整数分，`amount-linter` 强制执行」这条规则在会话开始时就出现在上下文里。同样类型的功能，Agent 在写第一行代码之前就用了 `1250`，CI 一次通过。前后的区别不在于规则本身变了，而在于规则在 Agent 决策时是否可见。
+
+CI 门禁的作用是兜底，SessionStart Hook 的作用是预防。两者都要有，缺一个都会增加不必要的来回。
+
 ## 典型反模式
 
 * **用冗长提示词取代宪法**：每次开启新会话时都通过手动黏贴大段的初始化 Prompt 来规定项目规范。这既浪费了昂贵的上下文 Token 空间，又会导致规则随着操作者的疏漏而产生边界漂移。
