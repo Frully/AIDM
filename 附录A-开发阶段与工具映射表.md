@@ -9,7 +9,7 @@
 
 | 阶段 | 核心任务 | 对应章节 | gstack 参考实现 |
 |---|---|---|---|
-| **Think** | 分析模糊需求，输出可执行 Spec 与原型设计 | 第 7 章 | `/office-hours`（答疑）、`/spec`（生成 Spec） |
+| **Think** | 重构问题框架、验证是否在解决正确的问题、输出设计文档（ `Design Doc` ）供 Plan 评审消费 | 第 7 章 | `/office-hours`（六问 + `Design Doc` 产出） |
 | **Plan** | 执行 CEO、工程与设计三视角评审，拆解任务并生成交付物追踪 | 第 8 至 10 章 | `/plan-ceo-review`、`/plan-eng-review`、`/plan-design-review`、`/autoplan`、`/codex` |
 | **Build** | 在隔离的分支与运行环境中并行编码实现 | 第 11 至 16 章 | Worktree 编排脚本、`SessionStart` 动态环境配置钩子 |
 | **Review** | 捕获静态门禁遗漏的业务逻辑漏洞并执行安全审计 | 第 24 章 | `/review`（代码评审）、`/cso`（安全审计）、`/codex` |
@@ -21,12 +21,12 @@
 
 | 基础设施 | 控制边界 | 对应章节 | gstack 与工具参考 |
 |---|---|---|---|
-| **Harness（脚手架）** | 固化项目宪法红线，提供标准可复用原子原语 | 第 2、5、6 章 | `AGENTS.md` 与 `CLAUDE.md` 软链接、运行时钩子、原子 Skills、`/design-consultation`、`/design-review` |
-| **Monorepo 与分层** | 消除包边界导致的上下文墙，依靠编译和依赖分析工具强制单向引用 | 第 11 与 12 章 | pnpm workspace、dependency-cruiser |
-| **刚性静态门禁** | 将代码质量、类型安全与依赖合规拦截卡口前置到自动化流水线 | 第 13 章 | lefthook（本地 Hook）、Biome（Lint 格式化）、CI 流水线守护 |
-| **并行 Worktree** | 隔离静态代码分支，通过动态端口与临时沙箱装配实现隔离运行 | 第 14 至 16 章 | Git Worktree 编排脚本、`SessionStart` 动态环境装配钩子 |
-| **结构化可观测性** | 依靠结构化上下文日志与全链路 Trace，为 Agent 线上调试提供受控排障入口 | 第 17 至 19 章 | pino 结构化日志库、外部 ELK/告警平台、云厂商只读 CLI、诊断专用脚本 |
-| **自动化 Eval** | 评估非确定性大模型行为指标，阻断非预期退化，治理线上成本 | 第 20 至 23 章 | vitest 测试框架、独立 Judge 校准判定模型、真实线上流量采样器 |
+| **Harness（脚手架）** | 固化项目宪法红线，提供标准可复用原子原语 | 第 2、5、6 章 | `AGENTS.md` 与 `CLAUDE.md` 软链接、运行时钩子、原子 `skills`、`/design-consultation`、`/design-review` |
+| **Monorepo 与分层** | 消除包边界导致的上下文墙，依靠编译和依赖分析工具强制单向引用 | 第 11 与 12 章 | `pnpm workspace`、`dependency-cruiser` |
+| **刚性静态门禁** | 将代码质量、类型安全与依赖合规拦截卡口前置到自动化流水线 | 第 13 章 | `lefthook`（本地 Hook）、`Biome`（Lint 格式化）、CI 流水线守护 |
+| **并行 Worktree** | 隔离静态代码分支，通过动态端口与临时沙箱装配实现隔离运行 | 第 14 至 16 章 | `Git Worktree` 编排脚本、`SessionStart` 动态环境装配钩子 |
+| **结构化可观测性** | 依靠结构化上下文日志与全链路 Trace，为 Agent 线上调试提供受控排障入口 | 第 17 至 19 章 | `pino` 结构化日志库、外部 `ELK`/告警平台、云厂商只读 CLI、诊断专用脚本 |
+| **自动化 Eval** | 评估非确定性大模型行为指标，阻断非预期退化，治理线上成本 | 第 20 至 23 章 | `vitest` 测试框架、独立 `Judge` 校准判定模型、真实线上流量采样器 |
 
 ## 三、人类工程师把关卡口
 
