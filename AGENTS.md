@@ -6,7 +6,7 @@ This is the Agent constitution for this repository — the single source of trut
 
 **AI-Driven Development Methodology (AIDM)** — a tutorial/documentation project that teaches how to drive a *complete* real-world project from idea to production using AI coding Agents. Audience: people who already have some product and engineering grounding and want to level up their AI-assisted development. The deliverable is **prose and diagrams, not application code** — there is no app to build here, only a body of teaching material.
 
-The working outline lives in [OUTLINE.md](OUTLINE.md) — that is the authoritative structure (前言 + 序章 + 9 部分 28 章 + 附录). Read it before proposing structural changes.
+The working outline lives in [OUTLINE.md](OUTLINE.md) — that is the authoritative structure (序章 + 6 部分 18 章 + 附录). Read it before proposing structural changes.
 
 ## 语言：一律简体中文（硬性约束）
 
@@ -18,7 +18,7 @@ The working outline lives in [OUTLINE.md](OUTLINE.md) — that is the authoritat
 
 ## The methodology this project teaches
 
-Central thesis: **Harness = 文档 + 检查 + 反馈.** Reliability comes from the scaffold around the model, not a cleverer prompt. The lifecycle spine is gstack's **Think → Plan → Build → Review → Test → Ship → Reflect**; the cross-cutting pillars below span multiple phases. Describe each in the abstract first (portable principle), then optionally show the gstack reference implementation.
+Central thesis: **Harness = 文档 + 检查 + 反馈.** Reliability comes from the scaffold around the model, not a cleverer prompt. The lifecycle is a per-task inner loop **Plan → Implement → Verify** plus a cross-iteration **Reflect** outer loop that writes lessons back into the harness. (Adapted from gstack's Think→Plan→Build→Review→Test→Ship→Reflect: Think folds into Plan, Build = Implement, Review+Test+Ship = Verify, Reflect is pulled out as the outer loop; Ship is the edge from Verify into production, not its own node.) The cross-cutting pillars below span multiple phases and are **not** lifecycle stages. Reserve **检查** for the automated-gate pillar and **验证** for the lifecycle phase — never conflate the two words. Describe each in the abstract first (portable principle), then optionally show the gstack reference implementation.
 
 1. **`AGENTS.md` as the Agent constitution.** Hard, machine-enforceable constraints in one file the Agent reads every session: invariants, layer rules, red lines. Constraints beat reminders.
 2. **A design system as single source of truth** (`DESIGN.md`). All visual/UX decisions in one doc; read before any UI work, flag drift in QA.
@@ -29,7 +29,7 @@ Central thesis: **Harness = 文档 + 检查 + 反馈.** Reliability comes from t
 7. **Author and review are separate passes.** Never self-approve in the same context.
 8. **Worktree isolation for parallel Agents** — static code via worktree, dynamic env (ports/db/services) via scripts + hooks.
 9. **`TODOS.md` as cold-pickup memory** + documentation as compound interest that flows back into the harness.
-10. **Evals + golden-number tests for risky paths.** AI/LLM behavior and money paths get Eval suites, judge calibration, and exact-value fixtures; Agent self-verification + business acceptance close the loop.
+10. **Golden-number + idempotency tests for critical paths.** Money paths get exact-value fixtures and idempotency contracts; Agent self-verification (e2e, security/injection adversarial tests) + business acceptance close the loop. (Out of scope: testing the product's own LLM features — Eval suite design, judge calibration, accuracy tuning. That is AI-product engineering, not the development methodology this book teaches.)
 
 ## Repository status & conventions
 
